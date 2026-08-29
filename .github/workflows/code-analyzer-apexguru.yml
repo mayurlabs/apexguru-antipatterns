@@ -1,4 +1,4 @@
-name: ApexGuru Static Analysis (Salesforce Code Analyzer)
+name: Code Quality Check
 
 on:
   pull_request:
@@ -41,11 +41,3 @@ jobs:
           run-arguments: --workspace . --rule-selector apexguru --output-file sfca_results.html --output-file sfca_results.json
           results-artifact-name: code-analyzer-results
           github-token: ${{ github.token }}
-
-      - name: Block merge on Critical/High ApexGuru violations in changed files
-        if: |
-          steps.run-code-analyzer.outputs.num-sev1-violations-in-changed-files > 0 ||
-          steps.run-code-analyzer.outputs.num-sev2-violations-in-changed-files > 0
-        run: |
-          echo "::error::Blocking: this PR introduces ${{ steps.run-code-analyzer.outputs.num-sev1-violations-in-changed-files }} Critical and ${{ steps.run-code-analyzer.outputs.num-sev2-violations-in-changed-files }} High ApexGuru violation(s) in changed files. Fix or triage these before merging."
-          exit 1

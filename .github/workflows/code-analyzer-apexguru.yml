@@ -11,53 +11,19 @@ permissions:
   actions: read
 
 jobs:
-  scan:
+  code-analysis:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: '11'
-
-      - name: Install Salesforce CLI
-        run: npm install -g @salesforce/cli
-
-      - name: Install Code Analyzer Plugin
-        run: sf plugins install code-analyzer@latest
-
-      - name: Authenticate to Salesforce org (DF26 demo org - safe, no runtime profile)
-        env:
-          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
-        run: echo "$SFDX_AUTH_URL" | sf org login sfdx-url --set-default --sfdx-url-stdin
-
-      - name: Run Code Analyzer (ApexGuru engine)
-        uses: forcedotcom/run-code-analyzer@v2
-        with:
-          run-arguments: --workspace . --rule-selector apexguru --output-file sfca_results.html --output-file sfca_results.json
-          results-artifact-name: code-analyzer-results
-          github-token: ${{ github.token }}
-        # Note: this action auto-uploads its own artifact (named above) and posts a job summary -
-        # no separate upload-artifact step needed; an earlier version of this workflow had a
-        # redundant explicit upload step, removed 2026-08-29.
-
-  quality-gate:
-    runs-on: ubuntu-latest
-    # Separate job from `scan` on purpose: `scan` is informational (always green, produces the
-    # shareable report); this job is the actual merge-blocking gate. Note: the run-code-analyzer
-    # action itself never fails your workflow on violations (by design, so it can still post its
-    # summary/PR review) - Salesforce's documented pattern is to read its typed outputs in a
-    # follow-up step and `exit 1` there.
+    # Single job, two concerns, matching Salesforce's own documented pattern (run-code-analyzer
+    # README "Example v2 Usage"): one analyzer run produces the full report (job summary +
+    # artifact + PR review comment), then a separate step enforces a gate off its outputs.
+    # The action itself never fails the workflow on violations by design (so it can still post
+    # its summary/review) - the gate step is what actually blocks the merge.
     #
-    # Scoped to CHANGED FILES ONLY (README "Option 2: Quality gate on CHANGED files only -
-    # useful for legacy codebases"), not the whole repo. This repo intentionally contains 15+
-    # pre-existing High-severity antipatterns by design (that's the point of it) - a whole-repo
-    # gate would stay red forever regardless of what a given PR does. Gating on changed files
-    # means: block NEW High/Critical problems a PR introduces, don't punish it for inherited
-    # debt. Requires github-token so the action can compute per-file diff stats.
+    # Gate is scoped to CHANGED FILES ONLY (README "Option 2: Quality gate on CHANGED files
+    # only - useful for legacy codebases"). This repo intentionally contains 15+ pre-existing
+    # High-severity antipatterns by design; a whole-repo gate would stay red forever regardless
+    # of what a given PR does. Gating on changed files means: block NEW High/Critical problems a
+    # PR introduces, don't punish it for inherited debt.
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -83,11 +49,13 @@ jobs:
         id: run-code-analyzer
         uses: forcedotcom/run-code-analyzer@v2
         with:
-          run-arguments: --workspace . --rule-selector apexguru
-          results-artifact-name: quality-gate-results
+          run-arguments: --workspace . --rule-selector apexguru --output-file sfca_results.html --output-file sfca_results.json
+          results-artifact-name: code-analyzer-results
           github-token: ${{ github.token }}
+        # This step auto-uploads the artifact above, posts the job summary, and (since a PR
+        # triggered this run) posts a review comment with the total + changed-file counts.
 
-      - name: Block merge on Critical/High ApexGuru violations IN CHANGED FILES
+      - name: Block merge on Critical/High ApexGuru violations in changed files
         if: |
           steps.run-code-analyzer.outputs.num-sev1-violations-in-changed-files > 0 ||
           steps.run-code-analyzer.outputs.num-sev2-violations-in-changed-files > 0

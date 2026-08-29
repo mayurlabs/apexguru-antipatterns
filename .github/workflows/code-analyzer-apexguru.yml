@@ -1,0 +1,49 @@
+name: Test run-code-analyzer@v2 (ApexGuru)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  pull-requests: write
+  contents: read
+  actions: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '11'
+
+      - name: Install Salesforce CLI
+        run: npm install -g @salesforce/cli
+
+      - name: Install Code Analyzer Plugin
+        run: sf plugins install code-analyzer@latest
+
+      - name: Authenticate to Salesforce org (DF26 demo org - safe, no runtime profile)
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+        run: echo "$SFDX_AUTH_URL" | sf org login sfdx-url --set-default --sfdx-url-stdin
+
+      - name: Run Code Analyzer (ApexGuru engine)
+        uses: forcedotcom/run-code-analyzer@v2
+        with:
+          run-arguments: --workspace . --rule-selector apexguru --output-file sfca_results.html --output-file sfca_results.json
+
+      - name: Upload results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-analyzer-results
+          path: |
+            sfca_results.html
+            sfca_results.json

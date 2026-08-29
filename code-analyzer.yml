@@ -1,0 +1,18 @@
+# Code Analyzer config for the ApexGuru demo.
+# Disables the Java-dependent engines so ApexGuru (a remote engine) runs cleanly
+# on machines without a JDK. Remove these once Java 11+ is installed if you also
+# want PMD / CPD / SFGE / Flow findings alongside ApexGuru.
+engines:
+  pmd:
+    disable_engine: true
+  cpd:
+    disable_engine: true
+  sfge:
+    disable_engine: true
+  flow:
+    disable_engine: true
+  apexguru:
+    # Bumped from the 300000ms (5 min) default so multi-class scans don't time out.
+    # ApexGuru polls the backend ~67s per class; a full 19-class folder scan can
+    # run ~15-21 min, so give it a 30-min ceiling (it only waits as long as needed).
+    api_timeout_ms: 1800000

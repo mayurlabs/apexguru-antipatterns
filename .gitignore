@@ -1,0 +1,7 @@
+.sf/
+.sfdx/
+.vscode/
+*.log
+node_modules/
+sfca_results.html
+sfca_results.json

@@ -47,3 +47,46 @@ jobs:
           path: |
             sfca_results.html
             sfca_results.json
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    # Separate job from `scan` on purpose: `scan` is informational (always green, produces the
+    # shareable report); this job is the actual merge-blocking gate. Note: the run-code-analyzer
+    # action itself never fails your workflow on violations (by design, so it can still post its
+    # summary/PR review) - Salesforce's documented pattern is to read its typed outputs
+    # (num-sev1-violations = Critical, num-sev2-violations = High, ...) in a follow-up step and
+    # `exit 1` there. That's what blocks the merge here on any Critical or High ApexGuru finding.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '11'
+
+      - name: Install Salesforce CLI
+        run: npm install -g @salesforce/cli
+
+      - name: Install Code Analyzer Plugin
+        run: sf plugins install code-analyzer@latest
+
+      - name: Authenticate to Salesforce org (DF26 demo org - safe, no runtime profile)
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+        run: echo "$SFDX_AUTH_URL" | sf org login sfdx-url --set-default --sfdx-url-stdin
+
+      - name: Run Code Analyzer (ApexGuru engine)
+        id: run-code-analyzer
+        uses: forcedotcom/run-code-analyzer@v2
+        with:
+          run-arguments: --workspace . --rule-selector apexguru
+
+      - name: Block merge on Critical/High ApexGuru violations
+        if: |
+          steps.run-code-analyzer.outputs.num-sev1-violations > 0 ||
+          steps.run-code-analyzer.outputs.num-sev2-violations > 0
+        run: |
+          echo "::error::Blocking: found ${{ steps.run-code-analyzer.outputs.num-sev1-violations }} Critical and ${{ steps.run-code-analyzer.outputs.num-sev2-violations }} High ApexGuru violation(s). Fix or triage these before merging."
+          exit 1

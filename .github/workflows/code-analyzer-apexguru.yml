@@ -39,6 +39,7 @@ jobs:
         with:
           run-arguments: --workspace . --rule-selector apexguru --output-file sfca_results.html --output-file sfca_results.json
           results-artifact-name: code-analyzer-results
+          github-token: ${{ github.token }}
         # Note: this action auto-uploads its own artifact (named above) and posts a job summary -
         # no separate upload-artifact step needed; an earlier version of this workflow had a
         # redundant explicit upload step, removed 2026-08-29.
@@ -48,9 +49,15 @@ jobs:
     # Separate job from `scan` on purpose: `scan` is informational (always green, produces the
     # shareable report); this job is the actual merge-blocking gate. Note: the run-code-analyzer
     # action itself never fails your workflow on violations (by design, so it can still post its
-    # summary/PR review) - Salesforce's documented pattern is to read its typed outputs
-    # (num-sev1-violations = Critical, num-sev2-violations = High, ...) in a follow-up step and
-    # `exit 1` there. That's what blocks the merge here on any Critical or High ApexGuru finding.
+    # summary/PR review) - Salesforce's documented pattern is to read its typed outputs in a
+    # follow-up step and `exit 1` there.
+    #
+    # Scoped to CHANGED FILES ONLY (README "Option 2: Quality gate on CHANGED files only -
+    # useful for legacy codebases"), not the whole repo. This repo intentionally contains 15+
+    # pre-existing High-severity antipatterns by design (that's the point of it) - a whole-repo
+    # gate would stay red forever regardless of what a given PR does. Gating on changed files
+    # means: block NEW High/Critical problems a PR introduces, don't punish it for inherited
+    # debt. Requires github-token so the action can compute per-file diff stats.
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -78,11 +85,12 @@ jobs:
         with:
           run-arguments: --workspace . --rule-selector apexguru
           results-artifact-name: quality-gate-results
+          github-token: ${{ github.token }}
 
-      - name: Block merge on Critical/High ApexGuru violations
+      - name: Block merge on Critical/High ApexGuru violations IN CHANGED FILES
         if: |
-          steps.run-code-analyzer.outputs.num-sev1-violations > 0 ||
-          steps.run-code-analyzer.outputs.num-sev2-violations > 0
+          steps.run-code-analyzer.outputs.num-sev1-violations-in-changed-files > 0 ||
+          steps.run-code-analyzer.outputs.num-sev2-violations-in-changed-files > 0
         run: |
-          echo "::error::Blocking: found ${{ steps.run-code-analyzer.outputs.num-sev1-violations }} Critical and ${{ steps.run-code-analyzer.outputs.num-sev2-violations }} High ApexGuru violation(s). Fix or triage these before merging."
+          echo "::error::Blocking: this PR introduces ${{ steps.run-code-analyzer.outputs.num-sev1-violations-in-changed-files }} Critical and ${{ steps.run-code-analyzer.outputs.num-sev2-violations-in-changed-files }} High ApexGuru violation(s) in changed files. Fix or triage these before merging."
           exit 1

@@ -39,6 +39,7 @@ jobs:
         with:
           run-arguments: --workspace . --rule-selector apexguru --output-file sfca_results.html --output-file sfca_results.json
           results-artifact-name: code-analyzer-results
+          github-token: ${{ github.token }}
         # Note: this action auto-uploads its own artifact (named above) and posts a job summary -
         # no separate upload-artifact step needed; an earlier version of this workflow had a
         # redundant explicit upload step, removed 2026-08-29.
